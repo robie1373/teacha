@@ -2,6 +2,8 @@
 ///
 /// Reference: <https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm>
 
+use serde::{Deserialize, Serialize};
+
 /// Default FSRS-5 weights (19 parameters).
 const W: [f64; 19] = [
     0.4072, 1.1829, 3.1262, 15.4722, // w0-w3: initial stability for Again/Hard/Good/Easy
@@ -26,7 +28,7 @@ const W: [f64; 19] = [
 const REQUEST_RETENTION: f64 = 0.9;
 
 /// Rating a user gives after reviewing a card.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Rating {
     Again = 1,
     Hard  = 2,
@@ -51,7 +53,7 @@ impl Rating {
 }
 
 /// Card learning state.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum State {
     New,
     Learning,
@@ -60,7 +62,7 @@ pub enum State {
 }
 
 /// Per-card FSRS scheduling state.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CardState {
     pub stability: f64,
     pub difficulty: f64,

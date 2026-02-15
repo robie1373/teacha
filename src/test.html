@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test</title>
+    <style>
+        body {
+            font-family: system-ui;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+        .test-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="test-box">
+        <h1>Teacha Test Page</h1>
+        <p>If you can see this, HTML is loading correctly.</p>
+        <p id="tauri-status">Checking Tauri API...</p>
+        <p id="invoke-test">Testing invoke...</p>
+    </div>
+    <script>
+        console.log('Test page loaded');
+        console.log('window.__TAURI__:', typeof window.__TAURI__);
+        
+        document.getElementById('tauri-status').textContent = 
+            window.__TAURI__ ? '✅ Tauri API is available' : '❌ Tauri API NOT available';
+        
+        if (window.__TAURI__) {
+            const { invoke } = window.__TAURI__.core;
+            invoke('get_statistics')
+                .then(stats => {
+                    document.getElementById('invoke-test').textContent = 
+                        `✅ Invoke works! Total cards: ${stats.total_cards}`;
+                })
+                .catch(err => {
+                    document.getElementById('invoke-test').textContent = 
+                        `❌ Invoke failed: ${err}`;
+                });
+        }
+    </script>
+</body>
+</html>
