@@ -349,6 +349,8 @@ struct ConsoleNotifier;
 
 impl Notifier for ConsoleNotifier {
     fn send(&self, title: &str, body: &str) -> Option<Rating> {
+        println!();
+        println!("─────────────────────────────────────────");
         println!("[console] {title}");
         println!("  {body}");
         println!("  Rate: (1) Again  (2) Hard  (3) Good  (4) Easy");
