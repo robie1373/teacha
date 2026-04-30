@@ -33,8 +33,7 @@ impl Database {
         Ok(Database { conn })
     }
 
-    #[cfg(test)]
-    pub fn test() -> Result<Self> {
+    pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         Self::initialize_schema(&conn)?;
         Ok(Database { conn })
@@ -122,6 +121,36 @@ impl Database {
             (title, prompt, body, tags, id),
         )?;
         Ok(())
+    }
+
+    pub fn get_card(&self, id: i64) -> Result<DbCard> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, prompt, body, tags,
+             stability, difficulty, elapsed_days, scheduled_days,
+             reps, lapses, state, last_review, due_at, created_at
+             FROM cards WHERE id = ?1",
+        )?;
+        stmt.query_row([id], |row| {
+            Ok(DbCard {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                prompt: row.get(2)?,
+                body: row.get(3)?,
+                tags: row.get(4)?,
+                fsrs_state: CardState {
+                    stability: row.get(5)?,
+                    difficulty: row.get(6)?,
+                    elapsed_days: row.get(7)?,
+                    scheduled_days: row.get(8)?,
+                    reps: row.get(9)?,
+                    lapses: row.get(10)?,
+                    state: int_to_state(row.get(11)?),
+                    last_review: row.get(12)?,
+                },
+                due_at: row.get(13)?,
+                created_at: row.get(14)?,
+            })
+        })
     }
 
     pub fn get_all_cards(&self) -> Result<Vec<DbCard>> {
@@ -322,7 +351,7 @@ mod tests {
 
     #[test]
     fn add_single_card() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db
             .add_card("Title", None, "Body", "")
             .expect("Failed to add card");
@@ -331,7 +360,7 @@ mod tests {
 
     #[test]
     fn add_multiple_cards() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id1 = db.add_card("T1", None, "B1", "").expect("add 1");
         let id2 = db.add_card("T2", None, "B2", "").expect("add 2");
         let id3 = db.add_card("T3", None, "B3", "").expect("add 3");
@@ -342,7 +371,7 @@ mod tests {
 
     #[test]
     fn added_card_has_new_state() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("Title", None, "Body", "").expect("add");
         let cards = db.get_all_cards().expect("get");
         assert_eq!(cards[0].fsrs_state.state, State::New);
@@ -350,7 +379,7 @@ mod tests {
 
     #[test]
     fn added_card_has_default_fsrs_values() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("Title", None, "Body", "").expect("add");
         let card = &db.get_all_cards().expect("get")[0];
         assert_eq!(card.fsrs_state.stability, 0.0);
@@ -363,7 +392,7 @@ mod tests {
 
     #[test]
     fn card_with_prompt_stores_and_retrieves() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("comma tip", Some(", ffmpeg -i in out"), "Run any binary via nix-index", "nix,cli")
             .expect("add");
         let card = &db.get_all_cards().expect("get")[0];
@@ -375,7 +404,7 @@ mod tests {
 
     #[test]
     fn card_without_prompt_is_null() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("HTTP 201?", None, "Resource created.", "http")
             .expect("add");
         let card = &db.get_all_cards().expect("get")[0];
@@ -384,7 +413,7 @@ mod tests {
 
     #[test]
     fn card_preserves_all_content_fields() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card(
             "Jump to end of file in vim",
             Some("G"),
@@ -403,14 +432,14 @@ mod tests {
 
     #[test]
     fn get_all_cards_empty() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let cards = db.get_all_cards().expect("get");
         assert_eq!(cards.len(), 0);
     }
 
     #[test]
     fn get_all_cards_retrieves_all() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("T1", None, "B1", "").expect("add 1");
         db.add_card("T2", None, "B2", "").expect("add 2");
         db.add_card("T3", None, "B3", "").expect("add 3");
@@ -421,7 +450,7 @@ mod tests {
 
     #[test]
     fn update_card_changes_content() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db.add_card("Old title", None, "Old body", "").expect("add");
         db.update_card(id, "New title", Some("cmd"), "New body", "tag")
             .expect("update");
@@ -434,7 +463,7 @@ mod tests {
 
     #[test]
     fn update_card_can_clear_prompt() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db
             .add_card("Title", Some("cmd"), "Body", "")
             .expect("add");
@@ -446,7 +475,7 @@ mod tests {
 
     #[test]
     fn update_card_preserves_fsrs_state() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db.add_card("Title", None, "Body", "").expect("add");
         db.review_card(id, Rating::Good).expect("review");
         let state_before = db.get_all_cards().expect("get")[0].fsrs_state.state;
@@ -460,7 +489,7 @@ mod tests {
 
     #[test]
     fn delete_card_removes_it() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db.add_card("Title", None, "Body", "").expect("add");
         db.delete_card(id).expect("delete");
         assert_eq!(db.get_all_cards().expect("get").len(), 0);
@@ -468,7 +497,7 @@ mod tests {
 
     #[test]
     fn delete_specific_card_leaves_others() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id1 = db.add_card("T1", None, "B1", "").expect("add 1");
         let id2 = db.add_card("T2", None, "B2", "").expect("add 2");
         db.delete_card(id1).expect("delete");
@@ -481,7 +510,7 @@ mod tests {
 
     #[test]
     fn newly_added_card_is_due() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("Title", None, "Body", "").expect("add");
         let now = chrono::Utc::now().timestamp();
         assert_eq!(db.get_due_cards(now).expect("get due").len(), 1);
@@ -489,7 +518,7 @@ mod tests {
 
     #[test]
     fn reviewed_card_is_not_immediately_due() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db.add_card("Title", None, "Body", "").expect("add");
         db.review_card(id, Rating::Good).expect("review");
         let now = chrono::Utc::now().timestamp();
@@ -500,7 +529,7 @@ mod tests {
 
     #[test]
     fn review_increments_reps() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db.add_card("Title", None, "Body", "").expect("add");
         db.review_card(id, Rating::Good).expect("review");
         assert_eq!(db.get_all_cards().expect("get")[0].fsrs_state.reps, 1);
@@ -508,7 +537,7 @@ mod tests {
 
     #[test]
     fn review_again_increments_lapses() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db.add_card("Title", None, "Body", "").expect("add");
         db.review_card(id, Rating::Good).expect("first review");
         db.review_card(id, Rating::Again).expect("lapse");
@@ -517,7 +546,7 @@ mod tests {
 
     #[test]
     fn review_pushes_due_at_into_future() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db.add_card("Title", None, "Body", "").expect("add");
         let initial_due = db.get_all_cards().expect("get")[0].due_at;
         db.review_card(id, Rating::Good).expect("review");
@@ -527,7 +556,7 @@ mod tests {
 
     #[test]
     fn review_easy_gives_higher_stability_than_again() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id1 = db.add_card("T1", None, "B1", "").expect("add 1");
         let id2 = db.add_card("T2", None, "B2", "").expect("add 2");
         db.review_card(id1, Rating::Easy).expect("review easy");
@@ -540,7 +569,7 @@ mod tests {
 
     #[test]
     fn review_returns_card_with_full_content() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         let id = db
             .add_card("comma tip", Some(", cmd"), "Details", "nix")
             .expect("add");
@@ -555,7 +584,7 @@ mod tests {
 
     #[test]
     fn get_cards_by_tag_finds_match() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("T1", None, "B1", "nix,cli").expect("add 1");
         db.add_card("T2", None, "B2", "vim").expect("add 2");
         let results = db.get_cards_by_tag("nix").expect("tag query");
@@ -565,7 +594,7 @@ mod tests {
 
     #[test]
     fn get_cards_by_tag_is_case_insensitive() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("T1", None, "B1", "Nix,CLI").expect("add");
         let results = db.get_cards_by_tag("nix").expect("tag query");
         assert_eq!(results.len(), 1);
@@ -573,7 +602,7 @@ mod tests {
 
     #[test]
     fn get_cards_by_tag_returns_empty_when_no_match() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("T1", None, "B1", "vim").expect("add");
         let results = db.get_cards_by_tag("nix").expect("tag query");
         assert_eq!(results.len(), 0);
@@ -581,7 +610,7 @@ mod tests {
 
     #[test]
     fn get_cards_by_tag_matches_partial_tag_name() {
-        let db = Database::test().expect("Failed to create test db");
+        let db = Database::open_in_memory().expect("Failed to create test db");
         db.add_card("T1", None, "B1", "nix,cli").expect("add 1");
         db.add_card("T2", None, "B2", "nixpkgs").expect("add 2");
         // both contain "nix"
