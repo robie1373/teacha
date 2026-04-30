@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn card_from_db_card_tip() {
-        let db = Database::test().expect("test db");
+        let db = Database::open_in_memory().expect("test db");
         let id = db
             .add_card("comma tip", Some(", cmd"), "Details", "nix,cli")
             .expect("add");
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn card_from_db_card_qa() {
-        let db = Database::test().expect("test db");
+        let db = Database::open_in_memory().expect("test db");
         let id = db
             .add_card("HTTP 201?", None, "Resource created.", "http")
             .expect("add");
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn add_and_retrieve_mixed_cards() {
-        let db = Database::test().expect("test db");
+        let db = Database::open_in_memory().expect("test db");
         db.add_card("comma tip", Some(", ffmpeg ..."), "Details", "nix")
             .expect("add tip");
         db.add_card("HTTP 201?", None, "Resource created.", "http")
@@ -447,7 +447,7 @@ mod tests {
 
     #[test]
     fn complete_card_workflow() {
-        let db = Database::test().expect("test db");
+        let db = Database::open_in_memory().expect("test db");
 
         let id1 = db
             .add_card("Tip 1", Some("cmd1"), "Body 1", "cli")

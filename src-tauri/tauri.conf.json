@@ -1,6 +1,6 @@
 {
   "productName": "Teacha",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.teacha.app",
   "build": {
     "beforeDevCommand": "",
@@ -31,11 +31,13 @@
     "windows": [
       {
         "title": "Teacha",
+        "url": "index.html",
         "width": 900,
         "height": 700,
         "resizable": true,
         "fullscreen": false,
-        "visible": false
+        "visible": true,
+        "devtools": true
       }
     ],
     "trayIcon": {
