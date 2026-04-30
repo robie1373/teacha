@@ -3767,11 +3767,12 @@ dependencies = [
 
 [[package]]
 name = "teacha"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "clap",
  "dirs 5.0.1",
+ "rand 0.8.5",
  "rusqlite",
  "serde",
  "serde_json",
