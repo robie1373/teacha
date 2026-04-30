@@ -1,234 +1,292 @@
-# teacha
+# Teacha
 
-A macOS spaced repetition flashcard application with desktop GUI, built with Tauri, Rust, and FSRS v5 algorithm.
+Ambient spaced repetition for CLI knowledge. Teacha runs in the background and periodically fires desktop or push notifications reminding you of commands, shortcuts, and tools you keep forgetting. Cards are scheduled using [FSRS v5](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm) — the same algorithm used in Anki — so things you know well show up rarely, and things you're shaky on show up often.
 
-## Quick Start
+It's not a study app. You don't sit down with Teacha. It interrupts you with a two-second reminder while you're doing something else, and over weeks the knowledge sticks.
 
-### Prerequisites
-- Rust 1.93.1+ (install via [rustup](https://rustup.rs/))
-- macOS 10.15+ with Xcode Command Line Tools
-- Tauri CLI: `cargo install tauri-cli`
+---
 
-### Build and Run
+## How it works
+
+1. A daemon polls a local SQLite database for cards that are due.
+2. When a card is due it fires a notification showing the title and body.
+3. On **Linux** (dunst), the notification has four action buttons: **Again / Hard / Good / Easy**.
+4. On **macOS**, an alert dialog appears with the same four buttons.
+5. Your rating feeds back into the FSRS scheduler, which decides when to show the card next — anywhere from a few minutes to months depending on how well you know it.
+6. If you dismiss without rating, it defaults to **Good**.
+
+Cards come in two flavours:
+
+- **Tip cards** — title, a prompt (the command or shortcut), and an explanation.
+- **Q&A cards** — title (the question) and body (the answer). No prompt.
+
+---
+
+## Prerequisites
+
+### Linux
+
+- A notification daemon that supports actions. [Dunst](https://dunst-project.org/) is recommended and works out of the box on most Wayland/X11 desktops.
+- `notify-send` from `libnotify` **0.8 or later** (for interactive action buttons).
+  Check your version: `notify-send --version`
+- For ntfy push to your phone: a running [ntfy](https://ntfy.sh/) server (self-hosted or ntfy.sh) and a topic URL.
+
+### macOS
+
+No external dependencies. Notifications use `osascript`, which ships with macOS. You may be prompted to allow notifications on first run.
+
+---
+
+## Install
+
+### Download a pre-built binary
+
+Go to the [Releases](../../releases) page and grab the binary for your platform:
+
+| Platform | File |
+|---|---|
+| Linux x86\_64 | `teacha-daemon-linux-x86_64` |
+| macOS Intel | `teacha-daemon-macos-x86_64` |
+| macOS Apple Silicon | `teacha-daemon-macos-aarch64` |
 
 ```bash
-# Debug mode (includes developer tools)
-cd src-tauri
-cargo tauri dev
+# Linux
+chmod +x teacha-daemon-linux-x86_64
+mv teacha-daemon-linux-x86_64 ~/.local/bin/teacha-daemon
 
-# Release mode
-cargo tauri build
+# macOS — clear the Gatekeeper quarantine flag before running
+xattr -d com.apple.quarantine teacha-daemon-macos-aarch64
+chmod +x teacha-daemon-macos-aarch64
+mv teacha-daemon-macos-aarch64 /usr/local/bin/teacha-daemon
 ```
 
-The app will launch with a database at `~/Library/Application Support/teacha/cards.db`.
+### Build from source
 
-## Features
+Requires Rust (install via [rustup](https://rustup.rs/)).
 
-### Card Management
-- **Create Cards**: Add flashcards with prompt and answer
-- **Browse Cards**: View all cards with FSRS state information
-- **Edit Cards**: Update card content
-- **Delete Cards**: Remove cards from database
-- **Review Interface**: Dedicated review window with rating buttons
+```bash
+git clone https://github.com/robie1373/teacha.git
+cd teacha/src-tauri
 
-### Spaced Repetition
-- **FSRS v5 Algorithm**: 19-parameter weights, 90% retention target
-- **Intelligent Scheduling**: Automatic interval calculation based on card difficulty and performance
-- **State Tracking**: New → Learning → Review → Relearning progression
-- **Stability & Difficulty**: Dynamic parameters that improve with each review
+# Daemon only — no GUI dependencies needed
+cargo build --bin teacha-daemon --no-default-features --release
+# Binary at: target/release/teacha-daemon
+```
 
-### Statistics Dashboard
-- **Card Counts**: Total, due, new, learning, and review state breakdowns
-- **Averages**: Mean difficulty and stability across reviewed cards
-- **Visual Overview**: Dashboard view of learning progress
+With Nix:
 
-### Settings
-- **Notification Channels**: Configure notification delivery (Integrated, Notification, Signal, Telegram)
-- **Poll Interval**: Customize review reminder frequency (default: 60 seconds)
-- **Channel Selection**: Choose which channels receive notifications
+```bash
+nix develop .#core   # minimal shell: cargo + gcc + openssl
+cargo build --bin teacha-daemon --no-default-features --release
+```
 
-## Architecture
+---
 
-### Project Structure
+## Quick start
+
+```bash
+# Fire any due cards once and exit — good for a first test
+teacha-daemon --once
+
+# Run the poll loop (checks every 60 seconds by default)
+teacha-daemon
+
+# Explicit channel
+teacha-daemon --channels desktop         # Linux (default)
+teacha-daemon --channels notification    # macOS (default)
+
+# Desktop + phone push
+teacha-daemon --channels desktop,ntfy --ntfy-url https://ntfy.example.com/my-topic
+
+# Custom poll interval
+teacha-daemon --poll-seconds 300
+
+# Full help
+teacha-daemon --help
+```
+
+All options can also be set via environment variables — useful for running as a service:
+
+```bash
+export TEACHA_CHANNELS=desktop,ntfy
+export TEACHA_NTFY_URL=https://ntfy.example.com/my-topic
+export TEACHA_POLL_SECONDS=120
+teacha-daemon
+```
+
+---
+
+## Notification channels
+
+| Channel | Platform | Interactive? | Notes |
+|---|---|---|---|
+| `desktop` | Linux | **Yes** | notify-send + dunst; libnotify ≥ 0.8 required |
+| `notification` | macOS | **Yes** | osascript alert with rating buttons |
+| `ntfy` | Any | No (defaults Good) | HTTP push to `--ntfy-url` / `TEACHA_NTFY_URL` |
+| `console` | Any | **Yes** | stdin/stdout; useful for testing |
+| `signal` | — | No | stub, not yet implemented |
+| `telegram` | — | No | stub, not yet implemented |
+
+Default: `desktop` on Linux, `notification` on macOS.
+
+---
+
+## Card format
+
+Cards are stored in SQLite at:
+
+- **Linux**: `~/.local/share/teacha/cards.db`
+- **macOS**: `~/Library/Application Support/teacha/cards.db`
+
+| Field | Required | Description |
+|---|---|---|
+| `title` | Yes | Notification headline or question |
+| `prompt` | No | Command or shortcut (shown before the body) |
+| `body` | Yes | Explanation or answer |
+| `tags` | No | Comma-separated categories, e.g. `nix,cli` |
+
+**Tip card** (prompt set):
+```
+title:  comma — run any binary without installing
+prompt: , ffmpeg -i input.mp4 output.webm
+body:   Uses nix-index-database to locate the package automatically.
+tags:   nix,cli
+```
+
+**Q&A card** (no prompt):
+```
+title: What does HTTP 201 mean?
+body:  Created. The request succeeded and a new resource was created.
+tags:  http
+```
+
+---
+
+## Starter deck
+
+On first launch with an empty database, Teacha seeds ~47 cards covering:
+
+- **Nix** — comma, nix shell/run/flake, nh os switch/test
+- **Vim** — navigation, text objects, global command, time-travel undo, increment
+- **Fish shell** — abbreviations, history search, funced, Alt-.
+- **Linux tools** — fd, rg, bat, jq, fzf, sd, hyperfine
+- **systemd / process monitoring** — journalctl, systemctl, systemd-analyze, ss, lsof, strace
+- **Wayland** — wlr-which-key
+- **HTTP** — common status codes
+
+---
+
+## Running as a background service
+
+### systemd user service (Linux)
+
+Create `~/.config/systemd/user/teacha.service`:
+
+```ini
+[Unit]
+Description=Teacha ambient learning daemon
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/teacha-daemon
+Environment=TEACHA_CHANNELS=desktop
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+Then:
+```bash
+systemctl --user enable --now teacha.service
+journalctl --user -u teacha.service -f
+```
+
+### launchd (macOS)
+
+Create `~/Library/LaunchAgents/com.teacha.daemon.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>             <string>com.teacha.daemon</string>
+  <key>ProgramArguments</key>  <array><string>/usr/local/bin/teacha-daemon</string></array>
+  <key>RunAtLoad</key>         <true/>
+  <key>KeepAlive</key>         <true/>
+</dict>
+</plist>
+```
+
+Then:
+```bash
+launchctl load ~/Library/LaunchAgents/com.teacha.daemon.plist
+```
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/robie1373/teacha.git
+cd teacha
+
+# Daemon + lib tests — no WebKitGTK needed
+nix develop .#core
+cargo test --lib --no-default-features                # 59 core tests
+cargo test --bin teacha-daemon --no-default-features  # 25 daemon tests
+
+# Full Tauri GUI dev environment
+nix develop
+cargo tauri dev
+```
+
+### Project structure
 
 ```
 teacha/
-├── src-tauri/              # Tauri application
-│   ├── src/
-│   │   ├── main.rs         # App entry point, Tauri commands
-│   │   ├── db.rs           # SQLite database layer
-│   │   ├── fsrs.rs         # FSRS algorithm implementation
-│   │   └── main_cli.rs     # Legacy CLI (preserved for reference)
-│   ├── Cargo.toml          # Rust dependencies
-│   └── tauri.conf.json     # Tauri configuration
-├── src/                    # Frontend (WebView)
-│   ├── index.html          # Main UI
-│   ├── review.html         # Review window UI
-│   ├── app.js              # Frontend logic
-│   └── styles.css          # Apple design system styling
-├── icons/                  # Application icons
-├── CHANGELOG.md            # Version history
-└── README.md              # This file
+├── flake.nix              Nix dev shells (default: full Tauri; core: daemon only)
+├── src/                   Frontend HTML/CSS/JS
+└── src-tauri/
+    ├── Cargo.toml         lib + two binaries (teacha GUI, teacha-daemon)
+    └── src/
+        ├── lib.rs         teacha_core — re-exports db, fsrs, seed
+        ├── db.rs          SQLite card store (rusqlite, bundled)
+        ├── fsrs.rs        FSRS v5 scheduler (19-parameter weights)
+        ├── seed.rs        Starter card deck
+        ├── main.rs        Tauri GUI binary (requires gui feature + WebKitGTK)
+        └── main_cli.rs    Daemon binary (no GUI deps)
 ```
 
-### Technology Stack
-
-**Backend:**
-- **Rust** - Type-safe systems programming language
-- **Tauri 2.10.2** - Lightweight desktop framework
-- **SQLite** - Lightweight relational database
-- **FSRS v5** - Algorithmic implementation of spaced repetition
-
-**Frontend:**
-- **HTML5** - Semantic markup
-- **Vanilla JavaScript** - Tauri API integration
-- **CSS3** - Grid, Flexbox, Apple design conventions
-- **Tauri API** - Backend communication via `invoke()`
-
-## Testing
-
-All code is covered by 68 comprehensive tests across three modules:
-
-```bash
-cd src-tauri
-cargo test          # Run all tests (68 tests)
-cargo test --lib   # Library tests only
-cargo test fsrs    # FSRS algorithm tests
-cargo test db      # Database tests
-cargo test tests   # Main/integration tests
-```
-
-### Test Coverage
-- **FSRS Module (31 tests)**: Algorithm correctness, stability calculations, state transitions
-- **Database Module (21 tests)**: CRUD operations, card reviews, multi-card interactions
-- **Main Module (16 tests)**: Data serialization, command handlers, integration workflows
-
-Each test runs in isolation with an in-memory SQLite database.
-
-## Database Schema
-
-```sql
-CREATE TABLE cards (
-  id INTEGER PRIMARY KEY,
-  prompt TEXT NOT NULL,
-  answer TEXT NOT NULL,
-  stability REAL DEFAULT 0.0,
-  difficulty REAL DEFAULT 0.0,
-  elapsed_days REAL DEFAULT 0.0,
-  scheduled_days REAL DEFAULT 0.0,
-  reps INTEGER DEFAULT 0,
-  lapses INTEGER DEFAULT 0,
-  state INTEGER DEFAULT 0,  -- 0: New, 1: Learning, 2: Review, 3: Relearning
-  last_review REAL DEFAULT 0.0,
-  due_at INTEGER NOT NULL,    -- Unix timestamp
-  created_at INTEGER NOT NULL
-);
-```
-
-## Available Tauri Commands
-
-### Card Operations
-- `get_all_cards()` → `Vec<Card>` - Get all cards
-- `get_due_cards()` → `Vec<Card>` - Get cards ready for review
-- `get_due_card()` → `Option<Card>` - Get single card for review
-- `add_card(prompt, answer)` → `i64` - Create new card (returns ID)
-- `update_card(id, prompt, answer)` → `()` - Update card content
-- `delete_card(id)` → `()` - Delete card
-- `review_card(id, rating)` → `Card` - Submit review (rating: 1-4)
-
-### Statistics & Settings
-- `get_statistics()` → `Statistics` - Get dashboard statistics
-- `get_settings()` → `JSON` - Get current settings
-- `update_settings(channel, signal, telegram)` → `()` - Update settings
-- `show_review_window()` → `()` - Create/focus review window
-
-## File Locations
-
-- **Database**: `~/Library/Application Support/teacha/cards.db`
-- **Application**: `/Applications/Teacha.app` (after release build)
-- **Logs**: Console.app with Tauri debugging
-
-## Development Notes
-
-### Building for Release
-```bash
-cd src-tauri
-cargo tauri build --release
-```
-
-Outputs to `src-tauri/target/release/` including:
-- `.app` bundle (macOS application)
-- `.dmg` disk image  
-- Signed executable (if code signing configured)
-
-### Debugging
-- **Frontend**: Press Cmd+R to reload UI
-- **Console**: Cmd+Shift+I to open developer tools (debug mode only)
-- **Database**: Direct SQLite3 access via `sqlite3 ~/Library/Application\ Support/teacha/cards.db`
-
-### Icon Generation
-Icons are generated via ImageMagick. To regenerate:
-```bash
-cd icons
-chmod +x gen.sh
-./gen.sh
-```
-
-Requires 32x32, 128x128, 128x128@2x PNG files and generates:
-- `icon.icns` (macOS)
-- `icon.ico` (Windows)
-- `icon.png` (Linux)
+---
 
 ## Roadmap
 
-### Planned Features
-- [ ] Keyboard shortcuts for navigation and review
-- [ ] Dark mode support
-- [ ] Card tags/categories
-- [ ] Import/export (Anki format)
-- [ ] Cloud sync
-- [ ] Multi-user sync via database URLs
-- [ ] Signal and Telegram notification implementation
-- [ ] macOS menu bar integration
-- [ ] Pkg installer for distribution
-- [ ] Analytics dashboard
+- [x] FSRS v5 scheduler
+- [x] SQLite card store with full schema (title / prompt / body / tags)
+- [x] Daemon: Linux interactive notifications via dunst (Again/Hard/Good/Easy)
+- [x] Daemon: macOS Notification Center alert (interactive)
+- [x] Daemon: ntfy push notifications
+- [x] CLI flags + env var config (`--help` documents everything)
+- [x] `--once` flag for one-shot firing (testing, systemd oneshot)
+- [x] Starter deck (~47 cards)
+- [x] Nix dev shells
+- [ ] CLI card management — `add`, `list`, `edit`, `delete`, `import`, `export`
+- [ ] Tauri GUI — browse, CRUD, stats dashboard, tag filtering
+- [ ] systemd user service module
+- [ ] Cross-platform binary releases via GitHub Actions
+- [ ] Signal and Telegram notification channels
 
-### Known Limitations
-- Signal and Telegram channels are stubbed (settings UI ready)
-- No cloud backup (local database only)
-- Single-device only (no sync)
-- Review window not yet fully integrated
+---
 
-## Contributing
+## Credits
 
-Pull requests welcome! Areas of focus:
-- Frontend UI improvements
-- Channel implementations (Signal, Telegram)
-- Performance optimization
-- macOS-specific features
+- [FSRS algorithm](https://github.com/open-spaced-repetition/fsrs4anki) by the Open Spaced Repetition project
+- [Tauri](https://tauri.app) — lightweight Rust + WebView desktop framework
+- [Dunst](https://dunst-project.org/) — notification daemon with action support
 
 ## License
 
 MIT
-
-## Credits
-
-- **FSRS Algorithm**: [Open Spaced Repetition](https://github.com/open-spaced-repetition/fsrs4anki)
-- **Tauri**: [Tauri Studio](https://tauri.app)
-- **Rust**: [The Rust Foundation](https://foundation.rust-lang.org/)
-
-
-[ ] Add support for additional notification channels (e.g., email, SMS). 
-[ ] Create a user-friendly interface for managing cards and reviewing schedules. 
-[x] Write unit tests to ensure the reliability of the application.
-[ ] update .gitignore.
-[ ] update test suite to cover entire app and remove legacy tests that no longer apply.
-[ ] update README with usage instructions, configuration options, and development notes.
-[ ] add a change log to track updates and improvements to the project.
-[ ] find a more elegant way to handle the integrated window. maybe clicking on the mac notificaation could load the integrated window so a rating can be given.
-[ ] fix the bug where the review card window shows loading... instead of the card content.
-[ ] put a release together and publish the app to github releases.
-[ ] build releases for windows and linux as well, and update the README with instructions for those platforms. use conditionals to ensure sensible notification options are the default on each platform. for example, on windows the default notification channel could be the Windows Notification Service, and on linux it could be libnotify or a custom solution depending on the desktop environment.
-[ ] add ui elements to delete cards.
-[ ] display state information in the cards tab and on the cards.
-
