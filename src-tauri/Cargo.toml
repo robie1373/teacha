@@ -10,6 +10,18 @@ edition = "2021"
 name = "teacha_core"
 path = "src/lib.rs"
 
+# Tauri GUI binary — requires the gui feature (WebKitGTK etc.)
+[[bin]]
+name = "teacha"
+path = "src/main.rs"
+required-features = ["gui"]
+
+# Daemon binary — polls FSRS-scheduled cards, fires notifications.
+# Compiles without WebKitGTK (no gui feature needed).
+[[bin]]
+name = "teacha-daemon"
+path = "src/main_cli.rs"
+
 # gui feature gates all Tauri deps. Enabled by default so `cargo tauri dev`
 # and `cargo tauri build` work without extra flags.
 [features]
@@ -33,3 +45,5 @@ tauri-plugin-shell = { version = "2", optional = true }
 
 # tokio is only needed by the daemon (main_cli) and future async work
 tokio = { version = "1", features = ["full"] }
+# ureq: sync HTTP client for ntfy push notifications (daemon only)
+ureq = { version = "2", features = [] }
