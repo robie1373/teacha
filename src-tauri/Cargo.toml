@@ -50,4 +50,4 @@ ureq = { version = "2", features = [] }
 # clap: CLI argument parsing for teacha-daemon
 clap = { version = "4", features = ["derive", "env"] }
 # rand: shuffle due cards within a session
-rand = { version = "0.8", features = [] }
+rand = { version = "0.8.6", features = [] }
