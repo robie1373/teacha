@@ -3,6 +3,7 @@
 
 use teacha_core::db::{self, Database};
 use teacha_core::fsrs::{Rating, State};
+use teacha_core::seed::seed_if_empty;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{Manager, State as TauriState};
@@ -261,20 +262,7 @@ fn update_settings(
 fn main() {
     let db = Database::new().expect("Failed to initialize database");
 
-    if db.get_all_cards().unwrap_or_default().is_empty() {
-        let _ = db.add_card(
-            "comma — run any binary without installing",
-            Some(", ffmpeg -i input.mp4 output.webm"),
-            "Uses nix-index-database to find the package. No nix-shell needed for one-off commands.",
-            "nix,cli",
-        );
-        let _ = db.add_card(
-            "Jump to end of file in vim",
-            Some("G"),
-            "Capital G moves to the last line. gg moves to the first.",
-            "vim",
-        );
-    }
+    seed_if_empty(&db);
 
     let app_state = AppState {
         db: Mutex::new(db),

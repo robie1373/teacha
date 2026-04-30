@@ -3,3 +3,4 @@
 // without requiring WebKitGTK or any other GUI system library.
 pub mod db;
 pub mod fsrs;
+pub mod seed;

@@ -4,6 +4,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use teacha_core::db::{Database, DbCard};
 use teacha_core::fsrs::Rating;
+use teacha_core::seed::seed_if_empty;
 
 const DEFAULT_POLL_SECS: u64 = 60;
 
@@ -286,6 +287,7 @@ fn main() {
 
     let notifiers = build_notifiers(&channels, args.ntfy_url.as_deref());
     let db = Database::new().expect("Failed to open database");
+    seed_if_empty(&db);
 
     if args.once {
         println!("teacha-daemon: firing due cards once");
