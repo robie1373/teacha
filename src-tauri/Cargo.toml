@@ -47,3 +47,5 @@ tauri-plugin-shell = { version = "2", optional = true }
 tokio = { version = "1", features = ["full"] }
 # ureq: sync HTTP client for ntfy push notifications (daemon only)
 ureq = { version = "2", features = [] }
+# clap: CLI argument parsing for teacha-daemon
+clap = { version = "4", features = ["derive", "env"] }

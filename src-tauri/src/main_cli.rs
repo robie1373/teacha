@@ -1,15 +1,61 @@
-use std::env;
+use clap::Parser;
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use teacha_core::db::{Database, DbCard};
 use teacha_core::fsrs::Rating;
-#[cfg(target_os = "macos")]
-use std::process::Command as MacCommand;
 
 const DEFAULT_POLL_SECS: u64 = 60;
 
-// ── Notifier trait ──────────────────────────────────────────────────────────
+// ── CLI args ─────────────────────────────────────────────────────────────────
+
+#[derive(Parser)]
+#[command(
+    name = "teacha-daemon",
+    version,
+    about = "FSR-scheduled card notifications for ambient CLI/vim/tool learning.",
+    long_about = "Polls the Teacha card database for due cards and fires notifications \
+via the configured channels. Ratings default to Good for fire-and-forget \
+channels (desktop, ntfy); console channel collects interactive ratings.\n\
+\nAccepted channel names (comma-separated):\n\
+\n  desktop      notify-send -> dunst (Linux default)\
+\n  ntfy         HTTP push to --ntfy-url / TEACHA_NTFY_URL\
+\n  notification macOS Notification Center alert (macOS default)\
+\n  console      interactive stdin/stdout\
+\n  signal       stub - not yet implemented\
+\n  telegram     stub - not yet implemented"
+)]
+struct Args {
+    /// Notification channels to use (comma-separated).
+    /// Default: desktop on Linux, notification on macOS.
+    #[arg(
+        long,
+        env = "TEACHA_CHANNELS",
+        value_delimiter = ',',
+        value_name = "CHANNEL"
+    )]
+    channels: Option<Vec<String>>,
+
+    /// Seconds between polling the database for due cards.
+    #[arg(
+        long,
+        env = "TEACHA_POLL_SECONDS",
+        default_value_t = DEFAULT_POLL_SECS,
+        value_name = "SECS"
+    )]
+    poll_seconds: u64,
+
+    /// ntfy endpoint URL including topic, e.g. https://ntfy.example.com/teacha
+    #[arg(long, env = "TEACHA_NTFY_URL", value_name = "URL")]
+    ntfy_url: Option<String>,
+
+    /// Fire all due cards once and exit instead of running a poll loop.
+    /// Useful for testing and systemd oneshot units.
+    #[arg(long)]
+    once: bool,
+}
+
+// ── Notifier trait ────────────────────────────────────────────────────────────
 
 trait Notifier {
     /// Fire the notification. Returns a rating if the channel supports
@@ -17,7 +63,7 @@ trait Notifier {
     fn send(&self, title: &str, body: &str) -> Option<Rating>;
 }
 
-// ── Console ─────────────────────────────────────────────────────────────────
+// ── Console ───────────────────────────────────────────────────────────────────
 
 struct ConsoleNotifier;
 
@@ -35,7 +81,7 @@ impl Notifier for ConsoleNotifier {
     }
 }
 
-// ── Desktop (Linux: notify-send / dunst) ────────────────────────────────────
+// ── Desktop (Linux: notify-send / dunst) ──────────────────────────────────────
 
 struct DesktopNotifier;
 
@@ -50,7 +96,7 @@ impl Notifier for DesktopNotifier {
     }
 }
 
-// ── ntfy (HTTP push) ────────────────────────────────────────────────────────
+// ── ntfy (HTTP push) ──────────────────────────────────────────────────────────
 
 struct NtfyNotifier {
     url: String,
@@ -68,7 +114,7 @@ impl Notifier for NtfyNotifier {
     }
 }
 
-// ── Signal / Telegram stubs ──────────────────────────────────────────────────
+// ── Signal / Telegram stubs ───────────────────────────────────────────────────
 
 struct SignalNotifier;
 
@@ -88,7 +134,7 @@ impl Notifier for TelegramNotifier {
     }
 }
 
-// ── macOS Notification Center ────────────────────────────────────────────────
+// ── macOS Notification Center ─────────────────────────────────────────────────
 
 struct NotificationCenterNotifier;
 
@@ -115,7 +161,7 @@ impl NotificationCenterNotifier {
             "display alert \"{}\" message \"{}\" buttons {{\"Again\", \"Hard\", \"Good\", \"Easy\"}} default button \"Good\"",
             escaped_title, escaped_body
         );
-        match MacCommand::new("osascript").arg("-e").arg(&script).output() {
+        match Command::new("osascript").arg("-e").arg(&script).output() {
             Ok(out) if out.status.success() => {
                 let stdout = String::from_utf8_lossy(&out.stdout);
                 stdout
@@ -145,7 +191,7 @@ fn escape_osascript(input: &str) -> String {
         .replace('\r', "")
 }
 
-// ── Channel enum ────────────────────────────────────────────────────────────
+// ── Channel enum ──────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
 enum Channel {
@@ -158,8 +204,8 @@ enum Channel {
 }
 
 impl Channel {
-    fn parse_list(raw: &str) -> Vec<Channel> {
-        raw.split(',')
+    fn parse_list(raw: &[String]) -> Vec<Channel> {
+        raw.iter()
             .map(|v| v.trim().to_lowercase())
             .filter_map(|v| match v.as_str() {
                 "console" => Some(Channel::Console),
@@ -168,23 +214,33 @@ impl Channel {
                 "signal" => Some(Channel::Signal),
                 "telegram" => Some(Channel::Telegram),
                 "notification" | "notifications" => Some(Channel::Notification),
-                _ => None,
+                other => {
+                    eprintln!("unknown channel {other:?}, ignoring");
+                    None
+                }
             })
             .collect()
     }
+
+    fn defaults() -> Vec<Channel> {
+        #[cfg(target_os = "macos")]
+        { vec![Channel::Notification] }
+        #[cfg(not(target_os = "macos"))]
+        { vec![Channel::Desktop] }
+    }
 }
 
-// ── Builder ──────────────────────────────────────────────────────────────────
+// ── Builder ───────────────────────────────────────────────────────────────────
 
-fn build_notifiers(channels: &[Channel]) -> Vec<Box<dyn Notifier>> {
+fn build_notifiers(channels: &[Channel], ntfy_url: Option<&str>) -> Vec<Box<dyn Notifier>> {
     let mut notifiers: Vec<Box<dyn Notifier>> = Vec::new();
     for channel in channels {
         match channel {
             Channel::Console => notifiers.push(Box::new(ConsoleNotifier)),
             Channel::Desktop => notifiers.push(Box::new(DesktopNotifier)),
-            Channel::Ntfy => match read_ntfy_url() {
-                Some(url) => notifiers.push(Box::new(NtfyNotifier { url })),
-                None => eprintln!("[ntfy] TEACHA_NTFY_URL not set, skipping"),
+            Channel::Ntfy => match ntfy_url {
+                Some(url) => notifiers.push(Box::new(NtfyNotifier { url: url.to_string() })),
+                None => eprintln!("[ntfy] --ntfy-url / TEACHA_NTFY_URL not set, skipping"),
             },
             Channel::Signal => notifiers.push(Box::new(SignalNotifier)),
             Channel::Telegram => notifiers.push(Box::new(TelegramNotifier)),
@@ -197,10 +253,9 @@ fn build_notifiers(channels: &[Channel]) -> Vec<Box<dyn Notifier>> {
     notifiers
 }
 
-// ── Notification content ─────────────────────────────────────────────────────
+// ── Notification content ──────────────────────────────────────────────────────
 
-/// Format the notification body from a card.
-/// Tip cards (prompt is Some): show prompt then body.
+/// Tip cards (prompt is Some): show prompt then explanation.
 /// Q&A cards (prompt is None): show body only.
 fn card_notification_body(card: &DbCard) -> String {
     match &card.prompt {
@@ -209,7 +264,7 @@ fn card_notification_body(card: &DbCard) -> String {
     }
 }
 
-// ── Config ───────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn now_unix() -> i64 {
     SystemTime::now()
@@ -218,70 +273,57 @@ fn now_unix() -> i64 {
         .as_secs() as i64
 }
 
-fn read_poll_seconds() -> u64 {
-    env::var("TEACHA_POLL_SECONDS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .filter(|v| *v > 0)
-        .unwrap_or(DEFAULT_POLL_SECS)
-}
-
-fn read_channels() -> Vec<Channel> {
-    env::var("TEACHA_CHANNELS")
-        .ok()
-        .map(|v| Channel::parse_list(&v))
-        .filter(|c| !c.is_empty())
-        .unwrap_or_else(|| {
-            #[cfg(target_os = "macos")]
-            { vec![Channel::Notification] }
-            #[cfg(not(target_os = "macos"))]
-            { vec![Channel::Desktop] }
-        })
-}
-
-fn read_ntfy_url() -> Option<String> {
-    env::var("TEACHA_NTFY_URL").ok().and_then(|url| {
-        let trimmed = url.trim().to_string();
-        if trimmed.is_empty() { None } else { Some(trimmed) }
-    })
-}
-
-// ── Main ─────────────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() {
-    let poll_seconds = read_poll_seconds();
-    let channels = read_channels();
-    let notifiers = build_notifiers(&channels);
+    let args = Args::parse();
+
+    let channels = args
+        .channels
+        .map(|raw| Channel::parse_list(&raw))
+        .filter(|c| !c.is_empty())
+        .unwrap_or_else(Channel::defaults);
+
+    let notifiers = build_notifiers(&channels, args.ntfy_url.as_deref());
     let db = Database::new().expect("Failed to open database");
 
+    if args.once {
+        println!("teacha-daemon: firing due cards once");
+        fire_due_cards(&db, &notifiers);
+        return;
+    }
+
     println!(
-        "teacha daemon running. poll={}s channels={:?}",
-        poll_seconds, channels
+        "teacha-daemon: poll={}s channels={:?}",
+        args.poll_seconds, channels
     );
 
     loop {
-        let now = now_unix();
-        let due_cards = db.get_due_cards(now).unwrap_or_default();
-
-        for card in due_cards {
-            let title = card.title.clone();
-            let body = card_notification_body(&card);
-
-            let rating = notifiers
-                .iter()
-                .find_map(|n| n.send(&title, &body))
-                .unwrap_or(Rating::Good);
-
-            if let Err(e) = db.review_card(card.id, rating) {
-                eprintln!("review_card failed for id={}: {e}", card.id);
-            }
-        }
-
-        thread::sleep(Duration::from_secs(poll_seconds));
+        fire_due_cards(&db, &notifiers);
+        thread::sleep(Duration::from_secs(args.poll_seconds));
     }
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+fn fire_due_cards(db: &Database, notifiers: &[Box<dyn Notifier>]) {
+    let now = now_unix();
+    let due_cards = db.get_due_cards(now).unwrap_or_default();
+
+    for card in due_cards {
+        let title = card.title.clone();
+        let body = card_notification_body(&card);
+
+        let rating = notifiers
+            .iter()
+            .find_map(|n| n.send(&title, &body))
+            .unwrap_or(Rating::Good);
+
+        if let Err(e) = db.review_card(card.id, rating) {
+            eprintln!("review_card failed for id={}: {e}", card.id);
+        }
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -290,62 +332,59 @@ mod tests {
 
     // ── Channel parsing ──────────────────────────────────────────────
 
+    fn ch(s: &str) -> Vec<Channel> {
+        Channel::parse_list(&[s.to_string()])
+    }
+
+    fn chs(s: &str) -> Vec<Channel> {
+        Channel::parse_list(&s.split(',').map(|v| v.to_string()).collect::<Vec<_>>())
+    }
+
     #[test]
     fn parse_console_channel() {
-        let ch = Channel::parse_list("console");
-        assert_eq!(ch.len(), 1);
-        assert!(matches!(ch[0], Channel::Console));
+        assert!(matches!(ch("console")[0], Channel::Console));
     }
 
     #[test]
     fn parse_desktop_channel() {
-        let ch = Channel::parse_list("desktop");
-        assert_eq!(ch.len(), 1);
-        assert!(matches!(ch[0], Channel::Desktop));
+        assert!(matches!(ch("desktop")[0], Channel::Desktop));
     }
 
     #[test]
     fn parse_ntfy_channel() {
-        let ch = Channel::parse_list("ntfy");
-        assert_eq!(ch.len(), 1);
-        assert!(matches!(ch[0], Channel::Ntfy));
+        assert!(matches!(ch("ntfy")[0], Channel::Ntfy));
     }
 
     #[test]
     fn parse_multiple_channels() {
-        let ch = Channel::parse_list("console,desktop,ntfy");
-        assert_eq!(ch.len(), 3);
+        assert_eq!(chs("console,desktop,ntfy").len(), 3);
     }
 
     #[test]
     fn parse_channels_with_spaces() {
-        let ch = Channel::parse_list(" console , desktop ");
+        let ch = Channel::parse_list(&[" console ".to_string(), " desktop ".to_string()]);
         assert_eq!(ch.len(), 2);
     }
 
     #[test]
     fn parse_channels_case_insensitive() {
-        let ch = Channel::parse_list("CONSOLE,Desktop,NTFY");
-        assert_eq!(ch.len(), 3);
+        assert_eq!(chs("CONSOLE,Desktop,NTFY").len(), 3);
     }
 
     #[test]
     fn parse_notifications_alias() {
-        let ch = Channel::parse_list("notifications");
-        assert_eq!(ch.len(), 1);
-        assert!(matches!(ch[0], Channel::Notification));
+        assert!(matches!(ch("notifications")[0], Channel::Notification));
     }
 
     #[test]
     fn parse_channels_unknown_ignored() {
-        let ch = Channel::parse_list("console,fax,pigeon");
-        assert_eq!(ch.len(), 1);
-        assert!(matches!(ch[0], Channel::Console));
+        assert_eq!(chs("console,fax,pigeon").len(), 1);
+        assert!(matches!(chs("console,fax")[0], Channel::Console));
     }
 
     #[test]
-    fn parse_channels_empty_string() {
-        assert!(Channel::parse_list("").is_empty());
+    fn parse_channels_empty_vec() {
+        assert!(Channel::parse_list(&[]).is_empty());
     }
 
     // ── Rating parsing ───────────────────────────────────────────────
@@ -400,7 +439,6 @@ mod tests {
 
     #[test]
     fn desktop_notifier_returns_none() {
-        // notify-send may not be present in test env; should not panic
         assert!(DesktopNotifier.send("t", "b").is_none());
     }
 
@@ -414,25 +452,31 @@ mod tests {
 
     #[test]
     fn build_notifiers_empty_falls_back_to_console() {
-        assert_eq!(build_notifiers(&[]).len(), 1);
+        assert_eq!(build_notifiers(&[], None).len(), 1);
     }
 
     #[test]
     fn build_notifiers_console_only() {
-        assert_eq!(build_notifiers(&[Channel::Console]).len(), 1);
+        assert_eq!(build_notifiers(&[Channel::Console], None).len(), 1);
     }
 
     #[test]
     fn build_notifiers_ntfy_without_url_falls_back_to_console() {
-        env::remove_var("TEACHA_NTFY_URL");
-        // ntfy skipped → empty → console fallback
-        assert_eq!(build_notifiers(&[Channel::Ntfy]).len(), 1);
+        assert_eq!(build_notifiers(&[Channel::Ntfy], None).len(), 1);
+    }
+
+    #[test]
+    fn build_notifiers_ntfy_with_url() {
+        let n = build_notifiers(&[Channel::Ntfy], Some("https://ntfy.example.com/t"));
+        assert_eq!(n.len(), 1);
     }
 
     #[test]
     fn build_notifiers_signal_and_telegram() {
-        let n = build_notifiers(&[Channel::Signal, Channel::Telegram]);
-        assert_eq!(n.len(), 2);
+        assert_eq!(
+            build_notifiers(&[Channel::Signal, Channel::Telegram], None).len(),
+            2
+        );
     }
 
     // ── card_notification_body ───────────────────────────────────────
