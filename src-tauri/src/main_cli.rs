@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::io::IsTerminal;
 use teacha_core::db::{Database, DbCard};
-use teacha_core::fsrs::Rating;
+use teacha_core::fsrs::{Rating, State};
 use teacha_core::seed::seed_if_empty;
 
 const DEFAULT_POLL_SECS: u64 = 60;
@@ -337,10 +338,34 @@ fn format_due(due_at: i64, now: i64) -> String {
     }
 }
 
+// ── ANSI color helpers ────────────────────────────────────────────────────────
+
+fn tty() -> bool {
+    std::io::stdout().is_terminal()
+}
+
+fn bold(s: &str) -> String {
+    if tty() { format!("\x1b[1m{s}\x1b[0m") } else { s.to_string() }
+}
+
+fn dim(s: &str) -> String {
+    if tty() { format!("\x1b[2m{s}\x1b[0m") } else { s.to_string() }
+}
+
+fn colored(s: &str, code: u8) -> String {
+    if tty() { format!("\x1b[{}m{s}\x1b[0m", code) } else { s.to_string() }
+}
+
+fn blue(s: &str) -> String   { colored(s, 34) }
+fn yellow(s: &str) -> String { colored(s, 33) }
+fn green(s: &str) -> String  { colored(s, 32) }
+fn red(s: &str) -> String    { colored(s, 31) }
+
 // ── Notifier trait ────────────────────────────────────────────────────────────
 
 trait Notifier {
     fn send(&self, title: &str, body: &str) -> Option<Rating>;
+    fn session_header(&self, _db: &Database, _due_count: usize) {}
 }
 
 // ── Console ───────────────────────────────────────────────────────────────────
@@ -348,12 +373,32 @@ trait Notifier {
 struct ConsoleNotifier;
 
 impl Notifier for ConsoleNotifier {
+    fn session_header(&self, db: &Database, due_count: usize) {
+        let cards = db.get_all_cards().unwrap_or_default();
+        let new      = cards.iter().filter(|c| c.fsrs_state.state == State::New).count();
+        let learning = cards.iter().filter(|c| c.fsrs_state.state == State::Learning).count();
+        let review   = cards.iter().filter(|c| c.fsrs_state.state == State::Review).count();
+        let relearn  = cards.iter().filter(|c| c.fsrs_state.state == State::Relearning).count();
+
+        println!();
+        println!(
+            "{}  {}  {}  {}  {}",
+            bold(&format!("{} due", due_count)),
+            blue(&format!("{} new", new)),
+            yellow(&format!("{} learning", learning)),
+            green(&format!("{} review", review)),
+            red(&format!("{} relearning", relearn)),
+        );
+        println!("{}", dim("─────────────────────────────────────────"));
+    }
+
     fn send(&self, title: &str, body: &str) -> Option<Rating> {
         println!();
-        println!("─────────────────────────────────────────");
-        println!("[console] {title}");
+        println!("{}", dim("─────────────────────────────────────────"));
+        println!("{}", bold(title));
         println!("  {body}");
-        println!("  Rate: (1) Again  (2) Hard  (3) Good  (4) Easy");
+        print!("  {}", dim("(1) Again  (2) Hard  (3) Good  (4) Easy  › "));
+        let _ = std::io::Write::flush(&mut std::io::stdout());
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input).is_ok() {
             Rating::from_str(input.trim())
@@ -591,7 +636,11 @@ fn main() {
 
 fn fire_due_cards(db: &Database, notifiers: &[Box<dyn Notifier>]) {
     let now = now_unix();
-    for card in db.get_due_cards(now).unwrap_or_default() {
+    let due_cards = db.get_due_cards(now).unwrap_or_default();
+    for n in notifiers {
+        n.session_header(db, due_cards.len());
+    }
+    for card in due_cards {
         let title = card.title.clone();
         let body = card_notification_body(&card);
         let rating = notifiers
