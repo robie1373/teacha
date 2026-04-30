@@ -88,12 +88,32 @@ struct DesktopNotifier;
 
 impl Notifier for DesktopNotifier {
     fn send(&self, title: &str, body: &str) -> Option<Rating> {
-        let _ = Command::new("notify-send")
-            .arg("--app-name=Teacha")
-            .arg(title)
-            .arg(body)
-            .status();
-        None
+        // --wait blocks until the user dismisses or clicks an action.
+        // --action=key,Label prints the key to stdout on click.
+        // Requires libnotify >= 0.8 and a supporting notification daemon (dunst).
+        let output = Command::new("notify-send")
+            .args([
+                "--app-name=Teacha",
+                "--wait",
+                "--action=1,Again",
+                "--action=2,Hard",
+                "--action=3,Good",
+                "--action=4,Easy",
+                title,
+                body,
+            ])
+            .output();
+
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                Rating::from_str(stdout.trim())
+            }
+            Err(e) => {
+                eprintln!("[desktop] notify-send failed: {e}");
+                None
+            }
+        }
     }
 }
 
@@ -440,8 +460,10 @@ mod tests {
     }
 
     #[test]
-    fn desktop_notifier_returns_none() {
-        assert!(DesktopNotifier.send("t", "b").is_none());
+    fn desktop_notifier_does_not_panic() {
+        // notify-send may not be present or may time out in test env.
+        // We only assert it returns an Option without panicking.
+        let _ = DesktopNotifier.send("t", "b");
     }
 
     #[test]
