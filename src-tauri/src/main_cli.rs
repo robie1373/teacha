@@ -21,7 +21,15 @@ const DEFAULT_POLL_SECS: u64 = 60;
 \nAccepted channel names (comma-separated):\n\
 \n  desktop      system notifications (notify-send on Linux, osascript on macOS)\
 \n  ntfy         HTTP push to --ntfy-url / TEACHA_NTFY_URL\
-\n  console      interactive stdin/stdout"
+\n  console      interactive stdin/stdout\
+\n\
+\nFlags that show [env: ...] can also be set as environment variables.\n\
+\nExample — set once in your shell config (~/.bashrc, ~/.zshrc, config.fish):\n\
+\n  export TEACHA_CHANNELS=desktop,ntfy\
+\n  export TEACHA_NTFY_URL=https://ntfy.example.com/my-topic\
+\n  export TEACHA_POLL_SECONDS=120\
+\n\
+\nAny flag passed on the command line overrides the environment variable."
 )]
 struct Args {
     #[command(subcommand)]

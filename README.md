@@ -91,9 +91,8 @@ teacha-daemon --once
 # Run the poll loop (checks every 60 seconds by default)
 teacha-daemon
 
-# Explicit channel
-teacha-daemon --channels desktop         # Linux (default)
-teacha-daemon --channels notification    # macOS (default)
+# Explicit channel (desktop works on both Linux and macOS)
+teacha-daemon --channels desktop
 
 # Desktop + phone push
 teacha-daemon --channels desktop,ntfy --ntfy-url https://ntfy.example.com/my-topic
@@ -105,14 +104,19 @@ teacha-daemon --poll-seconds 300
 teacha-daemon --help
 ```
 
-All options can also be set via environment variables — useful for running as a service:
+All options can also be set via environment variables. This is useful for
+running as a background service, or just to avoid typing the same flags
+every time. Add these to your shell config (`~/.bashrc`, `~/.zshrc`,
+`~/.config/fish/config.fish`) and they'll apply automatically:
 
 ```bash
 export TEACHA_CHANNELS=desktop,ntfy
 export TEACHA_NTFY_URL=https://ntfy.example.com/my-topic
 export TEACHA_POLL_SECONDS=120
-teacha-daemon
 ```
+
+Any flag passed on the command line overrides the environment variable.
+`teacha-daemon --help` lists the env var name next to each flag.
 
 ---
 
@@ -233,7 +237,7 @@ cd teacha
 # Daemon + lib tests — no WebKitGTK needed
 nix develop .#core
 cargo test --lib --no-default-features                # 59 core tests
-cargo test --bin teacha-daemon --no-default-features  # 25 daemon tests
+cargo test --bin teacha-daemon --no-default-features  # 36 daemon tests
 
 # Full Tauri GUI dev environment
 nix develop
@@ -270,11 +274,10 @@ teacha/
 - [x] `--once` flag for one-shot firing (testing, systemd oneshot)
 - [x] Starter deck (~47 cards)
 - [x] Nix dev shells
-- [ ] CLI card management — `add`, `list`, `edit`, `delete`, `import`, `export`
+- [x] CLI card management — `add`, `list`, `edit`, `delete`, `import`, `export`
 - [ ] Tauri GUI — browse, CRUD, stats dashboard, tag filtering
 - [ ] systemd user service module
 - [ ] Cross-platform binary releases via GitHub Actions
-- [ ] Signal and Telegram notification channels
 
 ---
 
