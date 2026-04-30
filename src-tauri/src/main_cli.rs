@@ -5,6 +5,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::io::IsTerminal;
+use rand::seq::SliceRandom;
 use teacha_core::db::{Database, DbCard};
 use teacha_core::fsrs::{Rating, State};
 use teacha_core::seed::seed_if_empty;
@@ -636,7 +637,8 @@ fn main() {
 
 fn fire_due_cards(db: &Database, notifiers: &[Box<dyn Notifier>]) {
     let now = now_unix();
-    let due_cards = db.get_due_cards(now).unwrap_or_default();
+    let mut due_cards = db.get_due_cards(now).unwrap_or_default();
+    due_cards.shuffle(&mut rand::thread_rng());
     for n in notifiers {
         n.session_header(db, due_cards.len());
     }
