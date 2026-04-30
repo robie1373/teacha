@@ -19,12 +19,9 @@ const DEFAULT_POLL_SECS: u64 = 60;
     about = "FSR-scheduled card notifications for ambient CLI/vim/tool learning.",
     long_about = "Without a subcommand: runs the notification poll loop.\n\
 \nAccepted channel names (comma-separated):\n\
-\n  desktop      notify-send -> dunst (Linux default)\
+\n  desktop      system notifications (notify-send on Linux, osascript on macOS)\
 \n  ntfy         HTTP push to --ntfy-url / TEACHA_NTFY_URL\
-\n  notification macOS Notification Center alert (macOS default)\
-\n  console      interactive stdin/stdout\
-\n  signal       stub - not yet implemented\
-\n  telegram     stub - not yet implemented"
+\n  console      interactive stdin/stdout"
 )]
 struct Args {
     #[command(subcommand)]
@@ -400,26 +397,6 @@ impl Notifier for NtfyNotifier {
     }
 }
 
-// ── Signal / Telegram stubs ───────────────────────────────────────────────────
-
-struct SignalNotifier;
-
-impl Notifier for SignalNotifier {
-    fn send(&self, title: &str, body: &str) -> Option<Rating> {
-        println!("[signal] {title} - {body}");
-        None
-    }
-}
-
-struct TelegramNotifier;
-
-impl Notifier for TelegramNotifier {
-    fn send(&self, title: &str, body: &str) -> Option<Rating> {
-        println!("[telegram] {title} - {body}");
-        None
-    }
-}
-
 // ── macOS Notification Center ─────────────────────────────────────────────────
 
 struct NotificationCenterNotifier;
@@ -483,9 +460,6 @@ enum Channel {
     Console,
     Desktop,
     Ntfy,
-    Signal,
-    Telegram,
-    Notification,
 }
 
 impl Channel {
@@ -494,11 +468,8 @@ impl Channel {
             .map(|v| v.trim().to_lowercase())
             .filter_map(|v| match v.as_str() {
                 "console" => Some(Channel::Console),
-                "desktop" => Some(Channel::Desktop),
+                "desktop" | "notification" | "notifications" => Some(Channel::Desktop),
                 "ntfy" => Some(Channel::Ntfy),
-                "signal" => Some(Channel::Signal),
-                "telegram" => Some(Channel::Telegram),
-                "notification" | "notifications" => Some(Channel::Notification),
                 other => {
                     eprintln!("unknown channel {other:?}, ignoring");
                     None
@@ -508,10 +479,7 @@ impl Channel {
     }
 
     fn defaults() -> Vec<Channel> {
-        #[cfg(target_os = "macos")]
-        { vec![Channel::Notification] }
-        #[cfg(not(target_os = "macos"))]
-        { vec![Channel::Desktop] }
+        vec![Channel::Desktop]
     }
 }
 
@@ -522,14 +490,16 @@ fn build_notifiers(channels: &[Channel], ntfy_url: Option<&str>) -> Vec<Box<dyn 
     for channel in channels {
         match channel {
             Channel::Console => notifiers.push(Box::new(ConsoleNotifier)),
-            Channel::Desktop => notifiers.push(Box::new(DesktopNotifier)),
+            Channel::Desktop => {
+                #[cfg(target_os = "macos")]
+                notifiers.push(Box::new(NotificationCenterNotifier));
+                #[cfg(not(target_os = "macos"))]
+                notifiers.push(Box::new(DesktopNotifier));
+            }
             Channel::Ntfy => match ntfy_url {
                 Some(url) => notifiers.push(Box::new(NtfyNotifier { url: url.to_string() })),
                 None => eprintln!("[ntfy] --ntfy-url / TEACHA_NTFY_URL not set, skipping"),
             },
-            Channel::Signal => notifiers.push(Box::new(SignalNotifier)),
-            Channel::Telegram => notifiers.push(Box::new(TelegramNotifier)),
-            Channel::Notification => notifiers.push(Box::new(NotificationCenterNotifier)),
         }
     }
     if notifiers.is_empty() {
@@ -679,7 +649,12 @@ mod tests {
 
     #[test]
     fn parse_notifications_alias() {
-        assert!(matches!(ch("notifications")[0], Channel::Notification));
+        assert!(matches!(ch("notifications")[0], Channel::Desktop));
+    }
+
+    #[test]
+    fn parse_notification_alias() {
+        assert!(matches!(ch("notification")[0], Channel::Desktop));
     }
 
     #[test]
@@ -714,16 +689,6 @@ mod tests {
     }
 
     // ── Notifiers ────────────────────────────────────────────────────
-
-    #[test]
-    fn signal_notifier_returns_none() {
-        assert!(SignalNotifier.send("t", "b").is_none());
-    }
-
-    #[test]
-    fn telegram_notifier_returns_none() {
-        assert!(TelegramNotifier.send("t", "b").is_none());
-    }
 
     #[test]
     fn desktop_notifier_does_not_panic() {

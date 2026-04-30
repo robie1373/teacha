@@ -120,14 +120,11 @@ teacha-daemon
 
 | Channel | Platform | Interactive? | Notes |
 |---|---|---|---|
-| `desktop` | Linux | **Yes** | notify-send + dunst; libnotify ≥ 0.8 required |
-| `notification` | macOS | **Yes** | osascript alert with rating buttons |
+| `desktop` | Linux + macOS | **Yes** | notify-send + dunst on Linux; osascript on macOS |
 | `ntfy` | Any | No (defaults Good) | HTTP push to `--ntfy-url` / `TEACHA_NTFY_URL` |
 | `console` | Any | **Yes** | stdin/stdout; useful for testing |
-| `signal` | — | No | stub, not yet implemented |
-| `telegram` | — | No | stub, not yet implemented |
 
-Default: `desktop` on Linux, `notification` on macOS.
+Default: `desktop`. `notification` and `notifications` are accepted aliases.
 
 ---
 
