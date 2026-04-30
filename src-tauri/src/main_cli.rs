@@ -87,7 +87,7 @@ enum Cmd {
         #[arg(long, short)]
         body: String,
         /// Comma-separated tags, e.g. nix,cli
-        #[arg(long, short, default_value = "")]
+        #[arg(long, short = 'T', default_value = "")]
         tags: String,
     },
 
@@ -118,7 +118,7 @@ enum Cmd {
         #[arg(long, short)]
         body: Option<String>,
         /// New tags.
-        #[arg(long, short)]
+        #[arg(long, short = 'T')]
         tags: Option<String>,
     },
 
