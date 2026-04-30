@@ -3,15 +3,33 @@ name = "teacha"
 version = "0.1.0"
 edition = "2021"
 
+# lib target: db + fsrs only — no GUI deps.
+# `cargo test --lib --no-default-features` compiles and runs core tests
+# without WebKitGTK or any other system GUI library.
+[lib]
+name = "teacha_core"
+path = "src/lib.rs"
+
+# gui feature gates all Tauri deps. Enabled by default so `cargo tauri dev`
+# and `cargo tauri build` work without extra flags.
+[features]
+default = ["gui"]
+gui = ["dep:tauri", "dep:tauri-plugin-shell"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-shell = "2"
+# Core — always compiled (used by lib and bin)
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
 dirs = "5"
+
+# GUI — only compiled when the `gui` feature is active
+tauri = { version = "2", features = ["tray-icon"], optional = true }
+tauri-plugin-shell = { version = "2", optional = true }
+
+# tokio is only needed by the daemon (main_cli) and future async work
+tokio = { version = "1", features = ["full"] }

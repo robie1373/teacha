@@ -37,6 +37,7 @@ pub enum Rating {
 }
 
 impl Rating {
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Option<Rating> {
         match s.trim().to_lowercase().as_str() {
             "again" | "1" => Some(Rating::Again),

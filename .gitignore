@@ -1,2 +1,6 @@
 /target
 /src-tauri/target
+
+# macOS metadata files (from archive extraction)
+._*
+.DS_Store
