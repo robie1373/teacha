@@ -399,19 +399,13 @@ impl Notifier for NtfyNotifier {
 
 // ── macOS Notification Center ─────────────────────────────────────────────────
 
+#[cfg(target_os = "macos")]
 struct NotificationCenterNotifier;
 
+#[cfg(target_os = "macos")]
 impl Notifier for NotificationCenterNotifier {
     fn send(&self, title: &str, body: &str) -> Option<Rating> {
-        #[cfg(target_os = "macos")]
-        {
-            return self.send_alert_with_rating(title, body);
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = (title, body);
-            None
-        }
+        self.send_alert_with_rating(title, body)
     }
 }
 
