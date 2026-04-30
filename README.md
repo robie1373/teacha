@@ -179,7 +179,21 @@ On first launch with an empty database, Teacha seeds ~47 cards covering:
 
 ## Running as a background service
 
-### systemd user service (Linux)
+### NixOS / home-manager
+
+If you use home-manager, copy `modules/_home/teacha.nix` from this repo into your config, import it, and enable it:
+
+```nix
+myHome.teacha = {
+  enable      = true;
+  pollSeconds = 120;
+  # ntfyUrl   = "https://ntfy.example.com/my-topic";  # optional
+};
+```
+
+The module adds `libnotify` automatically and creates a systemd user service that starts with your graphical session.
+
+### systemd user service (Linux, manual)
 
 Create `~/.config/systemd/user/teacha.service`:
 
@@ -275,8 +289,8 @@ teacha/
 - [x] Starter deck (~47 cards)
 - [x] Nix dev shells
 - [x] CLI card management — `add`, `list`, `edit`, `delete`, `import`, `export`
+- [x] systemd user service (Linux)
 - [ ] Tauri GUI — browse, CRUD, stats dashboard, tag filtering
-- [ ] systemd user service module
 - [ ] Cross-platform binary releases via GitHub Actions
 
 ---
