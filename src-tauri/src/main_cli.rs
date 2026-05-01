@@ -470,6 +470,7 @@ impl Notifier for DesktopNotifier {
             .args([
                 "--app-name=Teacha",
                 "--wait",
+                "--expire-time=0",
                 "--action=1,Again",
                 "--action=2,Hard",
                 "--action=3,Good",
