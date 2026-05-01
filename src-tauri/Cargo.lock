@@ -3772,6 +3772,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs 5.0.1",
+ "libc",
  "rand 0.8.6",
  "rusqlite",
  "serde",
