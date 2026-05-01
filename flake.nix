@@ -41,10 +41,8 @@
         teacha-daemon = pkgs.rustPlatform.buildRustPackage {
           pname   = "teacha-daemon";
           version = "0.3.0";
-          src     = ./.;
-
-          # Cargo.toml and Cargo.lock live in src-tauri/, not the repo root.
-          cargoRoot = "src-tauri";
+          # src points directly at src-tauri/ so Cargo.toml is at the root.
+          src     = ./src-tauri;
           cargoLock.lockFile = ./src-tauri/Cargo.lock;
 
           # Daemon only — no WebKitGTK or Tauri GUI deps.
