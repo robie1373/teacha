@@ -290,7 +290,7 @@ teacha/
 - [x] Nix dev shells
 - [x] CLI card management — `add`, `list`, `edit`, `delete`, `import`, `export`
 - [x] systemd user service (Linux)
-- [ ] Tauri GUI — browse, CRUD, stats dashboard, tag filtering
+- [x] Tauri GUI — browse, CRUD, stats dashboard, tag filtering
 - [ ] Cross-platform binary releases via GitHub Actions
 
 ---
