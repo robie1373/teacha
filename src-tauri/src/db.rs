@@ -221,7 +221,10 @@ impl Database {
     }
 
     pub fn delete_card(&self, id: i64) -> Result<()> {
-        self.conn.execute("DELETE FROM cards WHERE id = ?1", [id])?;
+        let rows = self.conn.execute("DELETE FROM cards WHERE id = ?1", [id])?;
+        if rows == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
     }
 

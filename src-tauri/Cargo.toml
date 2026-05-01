@@ -52,3 +52,5 @@ ureq = { version = "2", features = [] }
 clap = { version = "4", features = ["derive", "env"] }
 # rand: shuffle due cards within a session
 rand = { version = "0.8.6", features = [] }
+# libc: reset SIGPIPE so piping export/list to head/grep exits cleanly
+libc = { version = "0.2", optional = false }

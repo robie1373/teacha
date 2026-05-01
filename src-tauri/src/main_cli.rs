@@ -1,4 +1,6 @@
+#[cfg(unix)] use libc;
 use clap::{Parser, Subcommand};
+use rusqlite;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
@@ -241,6 +243,7 @@ fn cmd_delete(db: &Database, id: i64, yes: bool) {
     }
     match db.delete_card(id) {
         Ok(()) => println!("Deleted card #{id}"),
+        Err(rusqlite::Error::QueryReturnedNoRows) => eprintln!("Error: no card with ID {id}"),
         Err(e) => eprintln!("Error: {e}"),
     }
 }
@@ -281,19 +284,34 @@ fn cmd_import(db: &Database, file: &PathBuf) {
         })
     };
 
-    let records: Vec<CardRecord> = serde_json::from_str(&json).unwrap_or_else(|e| {
+    let raw: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap_or_else(|e| {
         eprintln!("Error parsing JSON: {e}");
         std::process::exit(1);
     });
 
     let mut added = 0usize;
-    for r in &records {
-        match db.add_card(&r.title, r.prompt.as_deref(), &r.body, &r.tags) {
+    let mut skipped = 0usize;
+    for (i, v) in raw.iter().enumerate() {
+        let title = match v.get("title").and_then(|s| s.as_str()) {
+            Some(s) if !s.is_empty() => s,
+            _ => { eprintln!("Skipping record {}: missing title", i + 1); skipped += 1; continue; }
+        };
+        let body = match v.get("body").and_then(|s| s.as_str()) {
+            Some(s) if !s.is_empty() => s,
+            _ => { eprintln!("Skipping \"{title}\": missing body"); skipped += 1; continue; }
+        };
+        let prompt = v.get("prompt").and_then(|s| s.as_str());
+        let tags = v.get("tags").and_then(|s| s.as_str()).unwrap_or("");
+        match db.add_card(title, prompt, body, tags) {
             Ok(_) => added += 1,
-            Err(e) => eprintln!("Skipping \"{}\": {e}", r.title),
+            Err(e) => { eprintln!("Skipping \"{title}\": {e}"); skipped += 1; }
         }
     }
-    println!("Imported {added}/{} card(s)", records.len());
+    if skipped > 0 {
+        println!("Imported {added}/{} card(s) ({skipped} skipped)", raw.len());
+    } else {
+        println!("Imported {added}/{} card(s)", raw.len());
+    }
 }
 
 fn cmd_export(db: &Database, output: Option<&PathBuf>) {
@@ -553,6 +571,7 @@ fn build_notifiers(channels: &[Channel], ntfy_url: Option<&str>) -> Vec<Box<dyn 
         }
     }
     if notifiers.is_empty() {
+        eprintln!("warning: no valid channels configured, falling back to console");
         notifiers.push(Box::new(ConsoleNotifier));
     }
     notifiers
@@ -579,6 +598,13 @@ fn now_unix() -> i64 {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() {
+    // Restore default SIGPIPE behaviour so piping to `head`, `grep`, etc.
+    // exits cleanly instead of panicking with "broken pipe".
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let args = Args::parse();
     let db = Database::new().expect("Failed to open database");
 
