@@ -38,7 +38,28 @@
           webkitgtk_4_1
         ];
 
+        teacha-daemon = pkgs.rustPlatform.buildRustPackage {
+          pname   = "teacha-daemon";
+          version = "0.3.0";
+          src     = ./.;
+
+          # Cargo.toml and Cargo.lock live in src-tauri/, not the repo root.
+          cargoRoot = "src-tauri";
+          cargoLock.lockFile = ./src-tauri/Cargo.lock;
+
+          # Daemon only — no WebKitGTK or Tauri GUI deps.
+          cargoBuildFlags = [ "--bin" "teacha-daemon" "--no-default-features" ];
+
+          # ureq uses native-tls which links against openssl on Linux.
+          buildInputs    = with pkgs; [ openssl ];
+          nativeBuildInputs = with pkgs; [ pkg-config ];
+
+          doCheck = false;
+        };
+
       in {
+        packages.teacha-daemon = teacha-daemon;
+
         devShells = {
           # Full Tauri dev environment.
           # Provides: `cargo tauri dev`, `cargo tauri build`, full GUI compilation.
