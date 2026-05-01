@@ -1,6 +1,6 @@
 {
   "productName": "Teacha",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "com.teacha.app",
   "build": {
     "beforeDevCommand": "npx --yes serve src -l 1420",
