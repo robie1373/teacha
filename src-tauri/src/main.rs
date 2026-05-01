@@ -291,7 +291,6 @@ fn main() {
             update_settings,
         ])
         .setup(|app| {
-            let _ = app.tray_by_id("main");
             #[cfg(debug_assertions)]
             {
                 if let Some(window) = app.get_webview_window("main") {

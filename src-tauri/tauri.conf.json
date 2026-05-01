@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "identifier": "com.teacha.app",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "npx --yes serve src -l 1420",
     "beforeBuildCommand": "",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src"
@@ -25,6 +25,7 @@
     }
   },
   "app": {
+    "withGlobalTauri": true,
     "security": {
       "csp": null
     },
@@ -32,18 +33,13 @@
       {
         "title": "Teacha",
         "url": "index.html",
-        "width": 900,
-        "height": 700,
+        "width": 1100,
+        "height": 750,
         "resizable": true,
         "fullscreen": false,
         "visible": true,
         "devtools": true
       }
-    ],
-    "trayIcon": {
-      "id": "main",
-      "iconPath": "icons/icon.png",
-      "menuOnLeftClick": false
-    }
+    ]
   }
 }

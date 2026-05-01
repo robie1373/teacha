@@ -2,6 +2,7 @@
 name = "teacha"
 version = "0.2.0"
 edition = "2021"
+default-run = "teacha"
 
 # lib target: db + fsrs only — no GUI deps.
 # `cargo test --lib --no-default-features` compiles and runs core tests
@@ -40,7 +41,7 @@ chrono = "0.4"
 dirs = "5"
 
 # GUI — only compiled when the `gui` feature is active
-tauri = { version = "2", features = ["tray-icon"], optional = true }
+tauri = { version = "2", features = [], optional = true }
 tauri-plugin-shell = { version = "2", optional = true }
 
 # tokio is only needed by the daemon (main_cli) and future async work
