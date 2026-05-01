@@ -14,6 +14,28 @@ use teacha_core::seed::seed_if_empty;
 
 const DEFAULT_POLL_SECS: u64 = 60;
 
+// Field length limits — enforced on all input paths (CLI, import, Tauri IPC).
+// Protects against memory exhaustion on import, ARG_MAX overflow when passing
+// content to notify-send/osascript, and notification system misbehaviour.
+const MAX_TITLE_LEN:  usize = 500;
+const MAX_PROMPT_LEN: usize = 500;
+const MAX_BODY_LEN:   usize = 10_000;
+const MAX_TAGS_LEN:   usize = 200;
+
+fn validate_card_fields(title: &str, prompt: Option<&str>, body: &str, tags: &str)
+    -> Result<(), String>
+{
+    if title.is_empty()              { return Err("title is required".into()); }
+    if title.len() > MAX_TITLE_LEN   { return Err(format!("title exceeds {MAX_TITLE_LEN} chars")); }
+    if body.is_empty()               { return Err("body is required".into()); }
+    if body.len() > MAX_BODY_LEN     { return Err(format!("body exceeds {MAX_BODY_LEN} chars")); }
+    if let Some(p) = prompt {
+        if p.len() > MAX_PROMPT_LEN  { return Err(format!("prompt exceeds {MAX_PROMPT_LEN} chars")); }
+    }
+    if tags.len() > MAX_TAGS_LEN     { return Err(format!("tags exceeds {MAX_TAGS_LEN} chars")); }
+    Ok(())
+}
+
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
@@ -153,6 +175,10 @@ enum Cmd {
 // ── Card management commands ──────────────────────────────────────────────────
 
 fn cmd_add(db: &Database, title: &str, prompt: Option<&str>, body: &str, tags: &str) {
+    if let Err(e) = validate_card_fields(title, prompt, body, tags) {
+        eprintln!("Error: {e}");
+        return;
+    }
     match db.add_card(title, prompt, body, tags) {
         Ok(id) => println!("Added card #{id}"),
         Err(e) => eprintln!("Error: {e}"),
@@ -226,6 +252,10 @@ fn cmd_edit(
         &tags_str
     };
 
+    if let Err(e) = validate_card_fields(title, prompt, body, tags) {
+        eprintln!("Error: {e}");
+        return;
+    }
     match db.update_card(id, title, prompt, body, tags) {
         Ok(()) => println!("Updated card #{id}"),
         Err(e) => eprintln!("Error: {e}"),
@@ -302,6 +332,9 @@ fn cmd_import(db: &Database, file: &PathBuf) {
         };
         let prompt = v.get("prompt").and_then(|s| s.as_str());
         let tags = v.get("tags").and_then(|s| s.as_str()).unwrap_or("");
+        if let Err(e) = validate_card_fields(title, prompt, body, tags) {
+            eprintln!("Skipping \"{title}\": {e}"); skipped += 1; continue;
+        }
         match db.add_card(title, prompt, body, tags) {
             Ok(_) => added += 1,
             Err(e) => { eprintln!("Skipping \"{title}\": {e}"); skipped += 1; }
@@ -464,7 +497,9 @@ struct NtfyNotifier {
 
 impl Notifier for NtfyNotifier {
     fn send(&self, title: &str, body: &str) -> Option<Rating> {
-        if let Err(e) = ureq::post(&self.url).set("Title", title).send_string(body) {
+        // Strip CRLF from the Title header value to prevent HTTP header injection.
+        let safe_title = title.replace(['\r', '\n'], " ");
+        if let Err(e) = ureq::post(&self.url).set("Title", &safe_title).send_string(body) {
             eprintln!("[ntfy] failed to send: {e}");
         }
         None
@@ -487,9 +522,9 @@ impl Notifier for NotificationCenterNotifier {
 impl NotificationCenterNotifier {
     fn send_alert_with_rating(&self, title: &str, body: &str) -> Option<Rating> {
         let script = format!(
-            "display alert \"{}\" message \"{}\" buttons {{\"Again\", \"Hard\", \"Good\", \"Easy\"}} default button \"Good\"",
-            escape_osascript(title),
-            escape_osascript(body)
+            "display alert {} message {} buttons {{\"Again\", \"Hard\", \"Good\", \"Easy\"}} default button \"Good\"",
+            to_applescript_string(title),
+            to_applescript_string(body)
         );
         match Command::new("osascript").arg("-e").arg(&script).output() {
             Ok(out) if out.status.success() => {
@@ -512,13 +547,26 @@ impl NotificationCenterNotifier {
     }
 }
 
+/// Build an AppleScript string expression whose runtime value equals `input`.
+///
+/// Standard AppleScript has NO backslash escape sequences — `\"` does NOT
+/// escape a double quote inside a string literal; it terminates the string,
+/// leaving the remainder as raw AppleScript that could execute shell commands.
+/// The safe idiom is `& quote &` concatenation.
+///
+/// Newlines are replaced with a space because multi-line string literals are
+/// not supported in one-liner `-e` scripts.
 #[cfg(target_os = "macos")]
-fn escape_osascript(input: &str) -> String {
-    input
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "")
+fn to_applescript_string(input: &str) -> String {
+    let sanitized = input.replace('\r', "").replace('\n', " ");
+    if !sanitized.contains('"') {
+        return format!("\"{}\"", sanitized);
+    }
+    sanitized
+        .split('"')
+        .map(|part| format!("\"{}\"", part))
+        .collect::<Vec<_>>()
+        .join(" & quote & ")
 }
 
 // ── Channel enum ──────────────────────────────────────────────────────────────

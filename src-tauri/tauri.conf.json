@@ -38,7 +38,7 @@
         "resizable": true,
         "fullscreen": false,
         "visible": true,
-        "devtools": true
+        "devtools": false
       }
     ]
   }

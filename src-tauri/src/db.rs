@@ -293,14 +293,19 @@ impl Database {
 
     /// Filter cards by tag (case-insensitive substring match on the tags field).
     pub fn get_cards_by_tag(&self, tag: &str) -> Result<Vec<DbCard>> {
+        // Use ESCAPE so % and _ in the tag are treated as literals, not wildcards.
         let mut stmt = self.conn.prepare(
             "SELECT id, title, prompt, body, tags,
              stability, difficulty, elapsed_days, scheduled_days,
              reps, lapses, state, last_review, due_at, created_at
-             FROM cards WHERE tags LIKE ?1 ORDER BY created_at DESC",
+             FROM cards WHERE tags LIKE ?1 ESCAPE '\\' ORDER BY created_at DESC",
         )?;
 
-        let pattern = format!("%{}%", tag.to_lowercase());
+        let escaped = tag.to_lowercase()
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("%{escaped}%");
         let cards = stmt.query_map([pattern], |row| {
             Ok(DbCard {
                 id: row.get(0)?,

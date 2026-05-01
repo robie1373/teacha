@@ -8,6 +8,25 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{Manager, State as TauriState};
 
+const MAX_TITLE_LEN:  usize = 500;
+const MAX_PROMPT_LEN: usize = 500;
+const MAX_BODY_LEN:   usize = 10_000;
+const MAX_TAGS_LEN:   usize = 200;
+
+fn validate_card_fields(title: &str, prompt: Option<&str>, body: &str, tags: &str)
+    -> Result<(), String>
+{
+    if title.is_empty()             { return Err("title is required".into()); }
+    if title.len() > MAX_TITLE_LEN  { return Err(format!("title exceeds {MAX_TITLE_LEN} chars")); }
+    if body.is_empty()              { return Err("body is required".into()); }
+    if body.len() > MAX_BODY_LEN    { return Err(format!("body exceeds {MAX_BODY_LEN} chars")); }
+    if let Some(p) = prompt {
+        if p.len() > MAX_PROMPT_LEN { return Err(format!("prompt exceeds {MAX_PROMPT_LEN} chars")); }
+    }
+    if tags.len() > MAX_TAGS_LEN    { return Err(format!("tags exceeds {MAX_TAGS_LEN} chars")); }
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Card {
     id: Option<i64>,
@@ -106,6 +125,7 @@ fn add_card(
     body: String,
     tags: String,
 ) -> Result<i64, String> {
+    validate_card_fields(&title, prompt.as_deref(), &body, &tags)?;
     let db = state.db.lock().unwrap();
     db.add_card(&title, prompt.as_deref(), &body, &tags)
         .map_err(|e| e.to_string())
@@ -120,6 +140,7 @@ fn update_card(
     body: String,
     tags: String,
 ) -> Result<(), String> {
+    validate_card_fields(&title, prompt.as_deref(), &body, &tags)?;
     let db = state.db.lock().unwrap();
     db.update_card(id, &title, prompt.as_deref(), &body, &tags)
         .map_err(|e| e.to_string())
