@@ -38,9 +38,6 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: teacha-daemon-linux-x86_64
-          - os: macos-13
-            target: x86_64-apple-darwin
-            artifact: teacha-daemon-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: teacha-daemon-macos-aarch64
@@ -88,9 +85,6 @@ jobs:
           - os: ubuntu-22.04
             platform: linux
             bundles: appimage,deb
-          - os: macos-13
-            platform: macos-intel
-            bundles: dmg
           - os: macos-latest
             platform: macos-arm
             bundles: dmg

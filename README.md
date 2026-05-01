@@ -46,7 +46,6 @@ Go to the [Releases](../../releases) page and grab the binary for your platform:
 | Platform | File |
 |---|---|
 | Linux x86\_64 | `teacha-daemon-linux-x86_64` |
-| macOS Intel | `teacha-daemon-macos-x86_64` |
 | macOS Apple Silicon | `teacha-daemon-macos-aarch64` |
 
 ```bash
@@ -291,7 +290,7 @@ teacha/
 - [x] CLI card management — `add`, `list`, `edit`, `delete`, `import`, `export`
 - [x] systemd user service (Linux)
 - [x] Tauri GUI — browse, CRUD, stats dashboard, tag filtering
-- [ ] Cross-platform binary releases via GitHub Actions
+- [x] Cross-platform binary releases via GitHub Actions
 
 ---
 
